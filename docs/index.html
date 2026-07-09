@@ -76,10 +76,16 @@
   code{background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;}
 </style></head>
 <body>
-<div id="authgate" style="position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--paper);">
+<div id="authgate" style="position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;gap:11px;background:var(--paper);padding:20px;">
   <div style="font-family:var(--serif);font-size:27px;color:var(--ink);">Growth Book Tracker</div>
-  <div style="color:var(--muted);font-family:var(--sans);font-size:14px;">Sign in to load your accounts.</div>
-  <button id="signin" style="font-family:var(--sans);font-size:15px;font-weight:600;padding:12px 22px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer;">Sign in with Google</button>
+  <div style="color:var(--muted);font-family:var(--sans);font-size:14px;margin-bottom:4px;">Sign in, or create an account.</div>
+  <input id="authEmail" type="email" placeholder="email" autocomplete="username" style="font-family:var(--sans);font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:280px;">
+  <input id="authPass" type="password" placeholder="password" autocomplete="current-password" style="font-family:var(--sans);font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:280px;">
+  <div style="display:flex;gap:10px;width:280px;">
+    <button id="signin" style="flex:1;font-family:var(--sans);font-size:15px;font-weight:600;padding:11px;border:none;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;">Sign in</button>
+    <button id="signup" style="flex:1;font-family:var(--sans);font-size:15px;font-weight:600;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer;">Sign up</button>
+  </div>
+  <div id="authMsg" style="color:var(--loss);font-family:var(--mono);font-size:12px;min-height:16px;text-align:center;max-width:300px;"></div>
 </div>
 <div class="wrap">
   <h1>Growth Book Tracker</h1>
@@ -358,5 +364,13 @@ async function start(){
 function showGate(s){ const g=$('authgate'); if(g) g.style.display=s?'flex':'none'; }
 sb.auth.getSession().then(({data})=>{ if(data.session){ showGate(false); start(); } else showGate(true); });
 sb.auth.onAuthStateChange((_e,session)=>{ if(session){ showGate(false); start(); } });
-const si=$('signin'); if(si) si.onclick=()=>sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split('#')[0].split('?')[0]}});
+function authMsg(t,ok){ const m=$('authMsg'); if(m){ m.textContent=t||''; m.style.color=ok?'var(--gain)':'var(--loss)'; } }
+function creds(){ return {email:(($('authEmail')||{}).value||'').trim(), password:($('authPass')||{}).value||''}; }
+const si=$('signin'); if(si) si.onclick=async()=>{ const c=creds(); authMsg('Signing in…',1);
+  const {error}=await sb.auth.signInWithPassword(c); if(error) authMsg(error.message); };
+const su=$('signup'); if(su) su.onclick=async()=>{ const c=creds();
+  if(!c.email) return authMsg('Enter an email.'); if(c.password.length<6) return authMsg('Password must be at least 6 characters.');
+  authMsg('Creating account…',1); const {data,error}=await sb.auth.signUp(c);
+  if(error) authMsg(error.message); else if(!data.session) authMsg('Account created — check your email to confirm, then sign in.',1); };
+const pw=$('authPass'); if(pw) pw.addEventListener('keydown',e=>{ if(e.key==='Enter') $('signin').click(); });
 </script></body></html>
