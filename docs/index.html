@@ -93,11 +93,13 @@
   <div class="accts" id="accts"></div>
 
   <div style="display:flex;gap:10px;margin:18px 0 0;">
-    <button id="btnExport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬇ Download backup (JSON)</button>
+    <button id="btnExport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬇ Export data</button>
+    <button id="btnImport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬆ Import data</button>
+    <input type="file" id="fileImport" accept="application/json" style="display:none">
   </div>
   <footer>
-    <div>Market signal as of <span id="fdate"></span>. Refresh it: <code>python generate_tracker.py --refresh</code>, then reload.</div>
-    <div>Your trades live in <code>transactions.csv</code> (durable, in git, same on every device). Log one with <code>python log_trade.py schwab buy --shares 90 --price 711.44</code>, then re-run the generator (local) or commit &amp; push (hosted). The curve = account value (solid) vs net contributions (dashed); the gap is your P&amp;L.</div>
+    <div>Market signal as of <span id="fdate"></span>. Refresh it weekly: <code>python generate_tracker.py --refresh</code>, then reload.</div>
+    <div>Log each fill (Buy/Sell), any Deposit/Withdraw, or click <b>Mark today</b> to snapshot value at the current price. The equity curve (solid) vs your net contributions (dashed) rebuilds instantly — the gap is your P&amp;L.</div>
     <div style="margin-top:6px;opacity:.8;">Educational tool. Your data stays in this browser only. Not investment advice.</div>
   </footer>
 </div>
@@ -123,27 +125,12 @@ function applySignal(){
   $('s_tgt').textContent=(D.target*100).toFixed(0)+'%';
 }
 
-// ---- accounts (the ledger comes from transactions.csv, not the browser) ----
+// ---- accounts ----
 const NAMES=['Schwab','E*Trade'];
-const nkey=i=>'gbtrk_name_'+i;
-let TX=[[],[]];                         // per-account transactions, parsed from the CSV
-function ledger(i){ return TX[i]||[]; }
+const lkey=i=>'gbtrk_ledger_'+i, nkey=i=>'gbtrk_name_'+i;
+function ledger(i){ try{return JSON.parse(localStorage.getItem(lkey(i)))||[];}catch(e){return [];} }
+function saveLedger(i,a){ localStorage.setItem(lkey(i),JSON.stringify(a)); }
 function acctName(i){ return localStorage.getItem(nkey(i))||NAMES[i]; }
-function parseTx(csvText){
-  const map={schwab:0,'e*trade':1,etrade:1}, tx=[[],[]];
-  (csvText||'').split(/\r?\n/).forEach(line=>{
-    line=line.trim(); if(!line||line[0]==='#') return;
-    const c=line.split(',').map(s=>s.trim()), i=map[(c[0]||'').toLowerCase()];
-    if(i==null) return;                 // also skips the header row
-    const date=c[1], type=c[2], e={date,type};
-    if(type==='buy'||type==='sell'){ e.qty=+c[3]; e.price=+c[4]; }
-    else if(type==='deposit'||type==='withdraw'){ e.amount=+c[5]; }
-    else if(type==='mark'){ e.price=+c[4]; }
-    else return;
-    tx[i].push(e);
-  });
-  return tx;
-}
 
 // walk the ledger chronologically -> running state + equity series
 function compute(i){
@@ -182,12 +169,13 @@ function actionHTML(st){
 }
 
 function ledgerHTML(st,i){
-  if(!st.rows.length) return `<div class="empty">No transactions for this account in transactions.csv yet.</div>`;
-  return `<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Qty/Amt</th><th>Price</th></tr></thead><tbody>`+
-    st.rows.slice().reverse().map(r=>{
+  if(!st.rows.length) return `<div class="empty">No entries yet — log a Deposit, then Buy per the signal.</div>`;
+  const rev=st.rows.map((r,idx)=>({r,idx})).reverse();
+  return `<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Qty/Amt</th><th>Price</th><th></th></tr></thead><tbody>`+
+    rev.map(({r,idx})=>{
       const qa = (r.type==='buy'||r.type==='sell')?r.qty+' sh':(r.type==='mark'?'—':money(r.amount));
-      const px = (r.price!=null&&r.type!=='deposit'&&r.type!=='withdraw')?'$'+(+r.price).toFixed(2):'';
-      return `<tr><td>${r.date}</td><td><span class="tag ${r.type}">${r.type}</span></td><td>${qa}</td><td>${px}</td></tr>`;
+      const px = (r.price!=null&&r.type!=='deposit'&&r.type!=='withdraw')?'$'+r.price.toFixed(2):'';
+      return `<tr><td>${r.date}</td><td><span class="tag ${r.type}">${r.type}</span></td><td>${qa}</td><td>${px}</td><td><span class="del" data-i="${i}" data-idx="${idx}">×</span></td></tr>`;
     }).join('')+`</tbody></table>`;
 }
 
@@ -204,7 +192,17 @@ function cardHTML(i){
     ${actionHTML(st)}
     <canvas id="cv${i}"></canvas>
     <div class="cvlbl"><span><i style="background:var(--accent)"></i>Account value</span><span><i style="background:var(--muted)"></i>Net contributions</span></div>
-    <div class="loghint">Log a trade → <code>python log_trade.py ${i===0?'schwab':'etrade'} buy --shares 90 --price ${D.qqq.toFixed(2)}</code> (then refresh / push)</div>
+    <form class="entry" id="fm${i}">
+      <label>Date</label><input type="date" id="dt${i}" value="${today()}">
+      <label>Type</label><select id="ty${i}">
+        <option value="buy">Buy QQQ</option><option value="sell">Sell QQQ</option>
+        <option value="deposit">Deposit</option><option value="withdraw">Withdraw</option>
+        <option value="mark">Mark (snapshot value)</option></select>
+      <label id="l1_${i}">Shares</label><input type="number" id="f1_${i}" step="any" placeholder="0">
+      <label id="l2_${i}">Price</label><input type="number" id="f2_${i}" step="any" placeholder="${D.qqq}">
+      <div class="btns"><button type="button" class="add" id="ad${i}">Add entry</button>
+        <button type="button" class="mark" id="mk${i}">Mark today @ $${D.qqq.toFixed(2)}</button></div>
+    </form>
     ${ledgerHTML(st,i)}
   </div>`;
 }
@@ -267,11 +265,37 @@ function drawCurve(i, hoverK){
   }
 }
 
+function syncFields(i){
+  const ty=$('ty'+i).value;
+  const showShares = (ty==='buy'||ty==='sell');
+  const showAmount = (ty==='deposit'||ty==='withdraw');
+  const showPrice  = (ty==='buy'||ty==='sell'||ty==='mark');
+  $('l1_'+i).textContent = showAmount?'Amount ($)':'Shares';
+  $('l1_'+i).style.display = (showShares||showAmount)?'':'none';
+  $('f1_'+i).style.display = (showShares||showAmount)?'':'none';
+  $('l2_'+i).style.display = showPrice?'':'none';
+  $('f2_'+i).style.display = showPrice?'':'none';
+}
+
+function addEntry(i){
+  const ty=$('ty'+i).value, date=$('dt'+i).value||today();
+  const v1=parseFloat($('f1_'+i).value), v2=parseFloat($('f2_'+i).value);
+  const e={date,type:ty};
+  if(ty==='buy'||ty==='sell'){ if(!(v1>0))return alert('Enter shares'); e.qty=v1; e.price=(v2>0?v2:D.qqq); }
+  else if(ty==='deposit'||ty==='withdraw'){ if(!(v1>0))return alert('Enter amount'); e.amount=v1; }
+  else if(ty==='mark'){ e.price=(v2>0?v2:D.qqq); }
+  const a=ledger(i); a.push(e); saveLedger(i,a); render();
+}
+function markToday(i){ const a=ledger(i); a.push({date:today(),type:'mark',price:D.qqq}); saveLedger(i,a); render(); }
+
 function render(){
   $('accts').innerHTML=cardHTML(0)+cardHTML(1);
   [0,1].forEach(i=>{
-    drawCurve(i);
+    drawCurve(i); syncFields(i);
     $('nm'+i).addEventListener('change',e=>{localStorage.setItem(nkey(i),e.target.value);});
+    $('ty'+i).addEventListener('change',()=>syncFields(i));
+    $('ad'+i).addEventListener('click',()=>addEntry(i));
+    $('mk'+i).addEventListener('click',()=>markToday(i));
     const cv=$('cv'+i);
     cv.addEventListener('mousemove',e=>{
       const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, xs=cv._xs;
@@ -281,21 +305,37 @@ function render(){
     });
     cv.addEventListener('mouseleave',()=>drawCurve(i,null));
   });
+  document.querySelectorAll('.del').forEach(d=>d.addEventListener('click',e=>{
+    const i=+e.target.dataset.i, idx=+e.target.dataset.idx;
+    const rows=ledger(i).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+    rows.splice(idx,1); saveLedger(i,rows); render();
+  }));
 }
 window.addEventListener('resize',()=>{drawCurve(0);drawCurve(1);});
 
-// ---- download a JSON backup of the current view (transactions.csv is the real store) ----
+// ---- export / import (move your data between devices) ----
 function exportData(){
   const dump={_app:'growth-book-tracker'};
   [0,1].forEach(i=>{ dump['name_'+i]=acctName(i); dump['ledger_'+i]=ledger(i); });
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(dump,null,2)],{type:'application/json'}));
-  a.download='growth-book-backup.json'; a.click();
+  a.download='growth-book-data.json'; a.click();
+}
+function importData(file){
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ const o=JSON.parse(rd.result);
+    [0,1].forEach(i=>{ if(o['name_'+i]!=null) localStorage.setItem(nkey(i),o['name_'+i]);
+      if(Array.isArray(o['ledger_'+i])) saveLedger(i,o['ledger_'+i]); });
+    render(); alert('Data imported.'); }catch(e){ alert('That file could not be read.'); } };
+  rd.readAsText(file);
 }
 
-function boot(){                        // D and TX are set by the bootstrap below
+function boot(){
   applySignal(); render();
-  const ex=$('btnExport'); if(ex) ex.onclick=exportData;
+  const ex=$('btnExport'), im=$('btnImport'), fi=$('fileImport');
+  if(ex) ex.onclick=exportData;
+  if(im) im.onclick=()=>fi.click();
+  if(fi) fi.onchange=e=>{ if(e.target.files[0]) importData(e.target.files[0]); };
 }
-Promise.all([fetch('signal.json?_='+Date.now()).then(r=>r.json()),fetch('transactions.csv?_='+Date.now()).then(r=>r.ok?r.text():'')]).then(([sig,csv])=>{D=sig; TX=parseTx(csv); boot();}).catch(e=>{document.body.innerHTML='<p style="font-family:system-ui;padding:40px;color:#555">Could not load the data yet. If you just deployed, wait for the first scheduled refresh (or run the Action manually).</p>';});
+fetch('signal.json?_='+Date.now()).then(r=>r.json()).then(d=>{D=d; boot();}).catch(e=>{document.body.innerHTML='<p style="font-family:system-ui;padding:40px;color:#555">Could not load signal.json yet. If you just deployed, wait for the first scheduled refresh (or run the Action manually).</p>';});
 </script></body></html>
