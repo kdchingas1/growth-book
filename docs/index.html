@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Growth Book Tracker</title>
+<style>
+  :root{
+    --paper:#F4F5F4;--card:#FBFBFA;--ink:#141C22;--muted:#5B6A72;--line:#E4E6E3;
+    --accent:#0F857A;--accent-soft:#0F857A18;--gain:#2E8B63;--loss:#C05545;--warn:#B7791F;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  @media(prefers-color-scheme:dark){:root{
+    --paper:#0D1317;--card:#141D22;--ink:#E9EDEA;--muted:#8C9BA2;--line:#243036;
+    --accent:#2FB6A8;--accent-soft:#2FB6A81f;--gain:#4FB483;--loss:#D9776A;--warn:#E0A83C;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;}
+  .wrap{max-width:1080px;margin:0 auto;padding:36px 20px 90px;}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-family:var(--mono);font-size:12px;margin:0 0 24px;}
+
+  .signal{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin-bottom:24px;}
+  .signal h2{font-family:var(--serif);font-size:15px;margin:0 0 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+  .badge{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:4px 12px;border-radius:20px;}
+  .badge.on{background:var(--gain);color:#fff;}.badge.off{background:var(--loss);color:#fff;}
+  .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;}
+  .stat{border:1px solid var(--line);border-radius:8px;padding:10px 13px;background:var(--paper);}
+  .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+  .stat .v{font-family:var(--mono);font-size:19px;margin-top:3px;font-variant-numeric:tabular-nums;}
+  .stat.big{grid-column:span 2;background:var(--accent-soft);border-color:var(--accent);}
+  .stat.big .v{color:var(--accent);font-size:24px;}
+
+  .accts{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:840px){.accts{grid-template-columns:1fr;}}
+  .acct{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;}
+  .acct-name{font-family:var(--serif);font-size:18px;font-weight:600;border:none;background:none;color:var(--ink);width:100%;padding:2px 0;margin-bottom:10px;}
+  .acct-name:focus{outline:none;border-bottom:2px solid var(--accent);}
+  .summ{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+  .summ .c{border:1px solid var(--line);border-radius:7px;padding:8px 10px;text-align:center;}
+  .summ .k{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);}
+  .summ .v{font-family:var(--mono);font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums;}
+  .pos{color:var(--gain);}.neg{color:var(--loss);}
+
+  .action{margin:12px 0;padding:11px 14px;border-radius:8px;font-family:var(--mono);font-size:13px;font-weight:600;text-align:center;}
+  .action.hold{background:var(--accent-soft);color:var(--accent);}
+  .action.buy{background:var(--gain);color:#fff;}.action.sell{background:var(--loss);color:#fff;}
+  .action .sm{display:block;font-weight:400;font-size:11px;margin-top:3px;opacity:.9;}
+
+  canvas{display:block;width:100%;height:168px;background:var(--paper);border:1px solid var(--line);border-radius:8px;margin:8px 0 4px;}
+  .cvlbl{font-family:var(--mono);font-size:10.5px;color:var(--muted);display:flex;gap:14px;justify-content:center;margin-bottom:12px;}
+  .cvlbl i{width:14px;height:2px;display:inline-block;vertical-align:middle;margin-right:5px;}
+
+  form.entry{display:grid;grid-template-columns:auto 1fr;gap:7px 8px;align-items:center;border-top:1px solid var(--line);padding-top:12px;margin-top:6px;}
+  form.entry label{font-size:12px;color:var(--muted);}
+  form.entry input,form.entry select{font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);width:100%;}
+  form.entry input:focus,form.entry select:focus{outline:none;border-color:var(--accent);}
+  .frow{display:contents;}
+  .btns{grid-column:span 2;display:flex;gap:8px;margin-top:2px;}
+  .btns button{flex:1;font-family:var(--mono);font-size:12.5px;font-weight:600;padding:9px;border:none;border-radius:7px;cursor:pointer;}
+  .btns .add{background:var(--accent);color:#fff;}
+  .btns .mark{background:var(--paper);color:var(--accent);border:1px solid var(--accent);}
+
+  table.ledger{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px;margin-top:12px;}
+  table.ledger th{color:var(--muted);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase;letter-spacing:.05em;}
+  table.ledger th:first-child,table.ledger td:first-child{text-align:left;}
+  table.ledger td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;}
+  .del{cursor:pointer;color:var(--loss);font-weight:700;padding:0 4px;}
+  .tag{padding:1px 6px;border-radius:4px;font-size:10px;}
+  .tag.buy{background:var(--accent-soft);color:var(--accent);}.tag.sell{background:#C0554522;color:var(--loss);}
+  .tag.deposit,.tag.withdraw{background:#5B6A7222;color:var(--muted);}.tag.mark{background:#B7791F22;color:var(--warn);}
+  .empty{color:var(--muted);font-size:12px;text-align:center;padding:16px;font-style:italic;}
+  footer{margin-top:30px;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line);padding-top:16px;}
+  code{background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;}
+</style></head>
+<body><div class="wrap">
+  <h1>Growth Book Tracker</h1>
+  <p class="sub" id="asof"></p>
+
+  <div class="signal">
+    <h2>Market Signal <span id="trendBadge" class="badge"></span></h2>
+    <div class="sgrid">
+      <div class="stat"><div class="k">QQQ</div><div class="v" id="s_qqq"></div></div>
+      <div class="stat"><div class="k">200-day MA</div><div class="v" id="s_ma"></div></div>
+      <div class="stat"><div class="k">20d Vol</div><div class="v" id="s_vol"></div></div>
+      <div class="stat"><div class="k">Breadth</div><div class="v" id="s_br"></div></div>
+      <div class="stat big"><div class="k">Target QQQ Exposure</div><div class="v" id="s_tgt"></div></div>
+    </div>
+  </div>
+
+  <div class="accts" id="accts"></div>
+
+  <div style="display:flex;gap:10px;margin:18px 0 0;">
+    <button id="btnExport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬇ Export data</button>
+    <button id="btnImport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬆ Import data</button>
+    <input type="file" id="fileImport" accept="application/json" style="display:none">
+  </div>
+  <footer>
+    <div>Market signal as of <span id="fdate"></span>. Refresh it weekly: <code>python generate_tracker.py</code>, then reload.</div>
+    <div>Log each fill (Buy/Sell), any Deposit/Withdraw, or click <b>Mark today</b> to snapshot value at the current price. The equity curve (solid) vs your net contributions (dashed) rebuilds instantly — the gap is your P&amp;L.</div>
+    <div style="margin-top:6px;opacity:.8;">Educational tool. Your data stays in this browser only. Not investment advice.</div>
+  </footer>
+</div>
+
+<script>
+let D = {};
+const $ = id => document.getElementById(id);
+const money = n => (n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
+const today = () => new Date().toISOString().slice(0,10);
+const axisMoney = v => v>=1e6?'$'+(v/1e6).toFixed(2)+'M':(v>=1e3?'$'+Math.round(v/1e3)+'k':'$'+Math.round(v));
+const shortDate = d => { const p=d.split('-'); return p[1]+'/'+p[2]+'/'+p[0].slice(2); };
+function rr(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ---- signal panel ----
+function applySignal(){
+  $('asof').textContent = 'Growth Book · signal as of '+D.date+' · both accounts trade this same target';
+  $('fdate').textContent = D.date;
+  const b=$('trendBadge'); b.textContent=D.trend?'TREND ON':'TREND OFF → T-BILLS'; b.className='badge '+(D.trend?'on':'off');
+  $('s_qqq').textContent='$'+D.qqq.toFixed(2);
+  $('s_ma').textContent='$'+D.ma200.toFixed(2);
+  $('s_vol').textContent=(D.vol*100).toFixed(1)+'%';
+  $('s_br').textContent=(D.breadth==null?'—':(D.breadth*100).toFixed(0)+'%');
+  $('s_tgt').textContent=(D.target*100).toFixed(0)+'%';
+}
+
+// ---- accounts ----
+const NAMES=['Schwab','E*Trade'];
+const lkey=i=>'gbtrk_ledger_'+i, nkey=i=>'gbtrk_name_'+i;
+function ledger(i){ try{return JSON.parse(localStorage.getItem(lkey(i)))||[];}catch(e){return [];} }
+function saveLedger(i,a){ localStorage.setItem(lkey(i),JSON.stringify(a)); }
+function acctName(i){ return localStorage.getItem(nkey(i))||NAMES[i]; }
+
+// walk the ledger chronologically -> running state + equity series
+function compute(i){
+  const rows=ledger(i).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  let shares=0, cash=0, invested=0, lastPx=D.qqq;
+  const eq=[];
+  for(const r of rows){
+    if(r.type==='buy'){ shares+=r.qty; cash-=r.qty*r.price; lastPx=r.price; }
+    else if(r.type==='sell'){ shares-=r.qty; cash+=r.qty*r.price; lastPx=r.price; }
+    else if(r.type==='deposit'){ cash+=r.amount; invested+=r.amount; }
+    else if(r.type==='withdraw'){ cash-=r.amount; invested-=r.amount; }
+    else if(r.type==='mark'){ lastPx=r.price; }
+    eq.push({date:r.date, value:cash+shares*lastPx, invested});
+  }
+  // Mark-to-market the CURRENT value at the live signal price and extend the
+  // curve to "now". Key it on TODAY (not the signal's date, which lags the last
+  // close) so it lands after your logged entries; also fire it whenever the
+  // marked value differs from the last point (i.e. QQQ moved since you logged).
+  const curPx = D.qqq || lastPx;
+  const value = cash+shares*curPx;
+  const tdy = today(), lp = eq[eq.length-1];
+  if(rows.length && (lp.date < tdy || Math.abs(value - lp.value) > 1))
+    eq.push({date: (lp.date < tdy ? tdy : lp.date), value, invested});
+  return {rows, shares, cash, invested, value, pnl:value-invested, eq, curPx};
+}
+
+function actionHTML(st){
+  const targetVal=st.value*D.target;
+  const targetSh=D.qqq>0?Math.round(targetVal/D.qqq):0;
+  const curVal=st.shares*D.qqq, band=0.10*st.value;
+  const d=targetSh-st.shares;
+  if(!D.trend && st.shares>0) return `<div class="action sell">SELL ALL ${st.shares} QQQ → T-BILLS<span class="sm">Trend is off — go to cash</span></div>`;
+  if(Math.abs(targetVal-curVal)>band && d>0) return `<div class="action buy">BUY ${d} QQQ<span class="sm">to reach ${targetSh} sh (${(D.target*100).toFixed(0)}% target)</span></div>`;
+  if(Math.abs(targetVal-curVal)>band && d<0) return `<div class="action sell">SELL ${-d} QQQ<span class="sm">to reach ${targetSh} sh (${(D.target*100).toFixed(0)}% target)</span></div>`;
+  return `<div class="action hold">HOLD — within the no-trade band<span class="sm">target ${targetSh} sh vs your ${st.shares} sh</span></div>`;
+}
+
+function ledgerHTML(st,i){
+  if(!st.rows.length) return `<div class="empty">No entries yet — log a Deposit, then Buy per the signal.</div>`;
+  const rev=st.rows.map((r,idx)=>({r,idx})).reverse();
+  return `<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Qty/Amt</th><th>Price</th><th></th></tr></thead><tbody>`+
+    rev.map(({r,idx})=>{
+      const qa = (r.type==='buy'||r.type==='sell')?r.qty+' sh':(r.type==='mark'?'—':money(r.amount));
+      const px = (r.price!=null&&r.type!=='deposit'&&r.type!=='withdraw')?'$'+r.price.toFixed(2):'';
+      return `<tr><td>${r.date}</td><td><span class="tag ${r.type}">${r.type}</span></td><td>${qa}</td><td>${px}</td><td><span class="del" data-i="${i}" data-idx="${idx}">×</span></td></tr>`;
+    }).join('')+`</tbody></table>`;
+}
+
+function cardHTML(i){
+  const st=compute(i);
+  const pnlPct=st.invested>0?(st.pnl/st.invested*100):0;
+  return `<div class="acct">
+    <input class="acct-name" id="nm${i}" value="${acctName(i).replace(/"/g,'&quot;')}">
+    <div class="summ">
+      <div class="c"><div class="k">Value</div><div class="v">${money(st.value)}</div></div>
+      <div class="c"><div class="k">P&L</div><div class="v ${st.pnl>=0?'pos':'neg'}">${money(st.pnl)}<br><span style="font-size:11px">${pnlPct>=0?'+':''}${pnlPct.toFixed(1)}%</span></div></div>
+      <div class="c"><div class="k">QQQ sh · Cash</div><div class="v">${st.shares}<br><span style="font-size:11px">${money(st.cash)}</span></div></div>
+    </div>
+    ${actionHTML(st)}
+    <canvas id="cv${i}"></canvas>
+    <div class="cvlbl"><span><i style="background:var(--accent)"></i>Account value</span><span><i style="background:var(--muted)"></i>Net contributions</span></div>
+    <form class="entry" id="fm${i}">
+      <label>Date</label><input type="date" id="dt${i}" value="${today()}">
+      <label>Type</label><select id="ty${i}">
+        <option value="buy">Buy QQQ</option><option value="sell">Sell QQQ</option>
+        <option value="deposit">Deposit</option><option value="withdraw">Withdraw</option>
+        <option value="mark">Mark (snapshot value)</option></select>
+      <label id="l1_${i}">Shares</label><input type="number" id="f1_${i}" step="any" placeholder="0">
+      <label id="l2_${i}">Price</label><input type="number" id="f2_${i}" step="any" placeholder="${D.qqq}">
+      <div class="btns"><button type="button" class="add" id="ad${i}">Add entry</button>
+        <button type="button" class="mark" id="mk${i}">Mark today @ $${D.qqq.toFixed(2)}</button></div>
+    </form>
+    ${ledgerHTML(st,i)}
+  </div>`;
+}
+
+function drawCurve(i, hoverK){
+  const st=compute(i), cv=$('cv'+i); if(!cv) return;
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
+  cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const cvar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const pts=st.eq;
+  if(pts.length<2){ ctx.fillStyle=cvar('--muted'); ctx.font='12px ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('Add 2+ dated entries to draw your equity curve', W/2, H/2); return; }
+  const padL=54,padR=12,padT=10,padB=18;
+  const allv=pts.flatMap(p=>[p.value,p.invested]);
+  let lo=Math.min(...allv), hi=Math.max(...allv); if(hi===lo){hi+=1;lo-=1;}
+  const rng=hi-lo; lo-=rng*0.08; hi+=rng*0.08;
+  const x=k=>padL+(W-padL-padR)*k/(pts.length-1), y=v=>padT+(H-padT-padB)*(1-(v-lo)/(hi-lo));
+  const muted=cvar('--muted'), gl=cvar('--line'), acc=cvar('--accent');
+  // Y-axis: nice-stepped gridlines + $ labels
+  ctx.font='9.5px ui-monospace,monospace'; ctx.textBaseline='middle';
+  const rawStep=(hi-lo)/3, mag=Math.pow(10,Math.floor(Math.log10(rawStep))), norm=rawStep/mag;
+  const step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step){
+    const yy=y(v);
+    ctx.strokeStyle=gl; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+    ctx.fillStyle=muted; ctx.textAlign='right'; ctx.fillText(axisMoney(v), padL-6, yy);
+  }
+  // X-axis: date labels (first, middle, last)
+  ctx.textBaseline='top'; ctx.fillStyle=muted;
+  ctx.textAlign='left'; ctx.fillText(shortDate(pts[0].date), padL, H-padB+5);
+  if(pts.length>3){ ctx.textAlign='center'; ctx.fillText(shortDate(pts[Math.floor((pts.length-1)/2)].date), (padL+W-padR)/2, H-padB+5); }
+  ctx.textAlign='right'; ctx.fillText(shortDate(pts[pts.length-1].date), W-padR, H-padB+5);
+  // invested (dashed)
+  ctx.strokeStyle=muted; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.beginPath();
+  pts.forEach((p,k)=>{const xx=x(k),yy=y(p.invested);k?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);}); ctx.stroke(); ctx.setLineDash([]);
+  // value (solid + fill)
+  ctx.beginPath(); pts.forEach((p,k)=>{const xx=x(k),yy=y(p.value);k?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);});
+  ctx.lineTo(x(pts.length-1),H-padB); ctx.lineTo(x(0),H-padB); ctx.closePath(); ctx.fillStyle=acc+'22'; ctx.fill();
+  ctx.beginPath(); pts.forEach((p,k)=>{const xx=x(k),yy=y(p.value);k?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);});
+  ctx.strokeStyle=acc; ctx.lineWidth=2; ctx.stroke();
+  const last=pts[pts.length-1]; ctx.fillStyle=acc; ctx.beginPath(); ctx.arc(x(pts.length-1),y(last.value),3.2,0,7); ctx.fill();
+  // store point x-positions for hover hit-testing
+  cv._xs=pts.map((p,k)=>x(k));
+  // crosshair + tooltip when hovering
+  if(hoverK!=null && hoverK>=0 && hoverK<pts.length){
+    const p=pts[hoverK], hx=x(hoverK), hy=y(p.value), pnl=p.value-p.invested;
+    ctx.strokeStyle=muted; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(hx,padT); ctx.lineTo(hx,H-padB); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=acc; ctx.beginPath(); ctx.arc(hx,hy,4.5,0,7); ctx.fill();
+    ctx.strokeStyle=cvar('--card'); ctx.lineWidth=1.5; ctx.stroke();
+    const L=[shortDate(p.date), money(p.value), 'P&L '+(pnl>=0?'+':'')+money(pnl)];
+    ctx.font='10px ui-monospace,monospace';
+    const tw=Math.max(ctx.measureText(L[0]).width,ctx.measureText(L[1]).width,ctx.measureText(L[2]).width)+16, th=48;
+    let tx=hx+10; if(tx+tw>W-2) tx=hx-10-tw; const ty=Math.min(H-padB-th-1, Math.max(2, hy-th-8));
+    ctx.fillStyle='rgba(18,26,32,0.94)'; rr(ctx,tx,ty,tw,th,6); ctx.fill();
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillStyle='#c8d2d6'; ctx.fillText(L[0], tx+8, ty+7);
+    ctx.fillStyle='#ffffff'; ctx.font='bold 12px ui-monospace,monospace'; ctx.fillText(L[1], tx+8, ty+19);
+    ctx.font='10px ui-monospace,monospace'; ctx.fillStyle=pnl>=0?'#4FB483':'#D9776A'; ctx.fillText(L[2], tx+8, ty+34);
+  }
+}
+
+function syncFields(i){
+  const ty=$('ty'+i).value;
+  const showShares = (ty==='buy'||ty==='sell');
+  const showAmount = (ty==='deposit'||ty==='withdraw');
+  const showPrice  = (ty==='buy'||ty==='sell'||ty==='mark');
+  $('l1_'+i).textContent = showAmount?'Amount ($)':'Shares';
+  $('l1_'+i).style.display = (showShares||showAmount)?'':'none';
+  $('f1_'+i).style.display = (showShares||showAmount)?'':'none';
+  $('l2_'+i).style.display = showPrice?'':'none';
+  $('f2_'+i).style.display = showPrice?'':'none';
+}
+
+function addEntry(i){
+  const ty=$('ty'+i).value, date=$('dt'+i).value||today();
+  const v1=parseFloat($('f1_'+i).value), v2=parseFloat($('f2_'+i).value);
+  const e={date,type:ty};
+  if(ty==='buy'||ty==='sell'){ if(!(v1>0))return alert('Enter shares'); e.qty=v1; e.price=(v2>0?v2:D.qqq); }
+  else if(ty==='deposit'||ty==='withdraw'){ if(!(v1>0))return alert('Enter amount'); e.amount=v1; }
+  else if(ty==='mark'){ e.price=(v2>0?v2:D.qqq); }
+  const a=ledger(i); a.push(e); saveLedger(i,a); render();
+}
+function markToday(i){ const a=ledger(i); a.push({date:today(),type:'mark',price:D.qqq}); saveLedger(i,a); render(); }
+
+function render(){
+  $('accts').innerHTML=cardHTML(0)+cardHTML(1);
+  [0,1].forEach(i=>{
+    drawCurve(i); syncFields(i);
+    $('nm'+i).addEventListener('change',e=>{localStorage.setItem(nkey(i),e.target.value);});
+    $('ty'+i).addEventListener('change',()=>syncFields(i));
+    $('ad'+i).addEventListener('click',()=>addEntry(i));
+    $('mk'+i).addEventListener('click',()=>markToday(i));
+    const cv=$('cv'+i);
+    cv.addEventListener('mousemove',e=>{
+      const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, xs=cv._xs;
+      if(!xs||xs.length<2) return;
+      let best=0,bd=1e9; xs.forEach((sx,k)=>{const d=Math.abs(sx-mx); if(d<bd){bd=d;best=k;}});
+      drawCurve(i,best);
+    });
+    cv.addEventListener('mouseleave',()=>drawCurve(i,null));
+  });
+  document.querySelectorAll('.del').forEach(d=>d.addEventListener('click',e=>{
+    const i=+e.target.dataset.i, idx=+e.target.dataset.idx;
+    const rows=ledger(i).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+    rows.splice(idx,1); saveLedger(i,rows); render();
+  }));
+}
+window.addEventListener('resize',()=>{drawCurve(0);drawCurve(1);});
+
+// ---- export / import (move your data between devices) ----
+function exportData(){
+  const dump={_app:'growth-book-tracker'};
+  [0,1].forEach(i=>{ dump['name_'+i]=acctName(i); dump['ledger_'+i]=ledger(i); });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(dump,null,2)],{type:'application/json'}));
+  a.download='growth-book-data.json'; a.click();
+}
+function importData(file){
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ const o=JSON.parse(rd.result);
+    [0,1].forEach(i=>{ if(o['name_'+i]!=null) localStorage.setItem(nkey(i),o['name_'+i]);
+      if(Array.isArray(o['ledger_'+i])) saveLedger(i,o['ledger_'+i]); });
+    render(); alert('Data imported.'); }catch(e){ alert('That file could not be read.'); } };
+  rd.readAsText(file);
+}
+
+function boot(){
+  applySignal(); render();
+  const ex=$('btnExport'), im=$('btnImport'), fi=$('fileImport');
+  if(ex) ex.onclick=exportData;
+  if(im) im.onclick=()=>fi.click();
+  if(fi) fi.onchange=e=>{ if(e.target.files[0]) importData(e.target.files[0]); };
+}
+fetch('signal.json?_='+Date.now()).then(r=>r.json()).then(d=>{D=d; boot();}).catch(e=>{document.body.innerHTML='<p style="font-family:system-ui;padding:40px;color:#555">Could not load signal.json yet. If you just deployed, wait for the first scheduled refresh (or run the Action manually).</p>';});
+</script></body></html>
