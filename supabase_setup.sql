@@ -29,3 +29,7 @@ create policy gb_sel on public.gb_transactions for select using (auth.uid() = us
 create policy gb_ins on public.gb_transactions for insert with check (auth.uid() = user_id);
 create policy gb_del on public.gb_transactions for delete using (auth.uid() = user_id);
 create policy gb_upd on public.gb_transactions for update using (auth.uid() = user_id);
+
+-- Logged-in users need table privileges too (RLS above then limits them to their OWN rows).
+-- 'anon' (not signed in) is deliberately granted nothing.
+grant select, insert, update, delete on public.gb_transactions to authenticated;
