@@ -1,0 +1,16 @@
+# Growth Book transactions — the durable log the tracker reads to build your equity curve.
+# Columns: account,date,type,shares,price,amount
+#   account : schwab | etrade
+#   type    : deposit | withdraw | buy | sell | mark
+#   deposit/withdraw -> fill the amount column
+#   buy/sell         -> fill shares and price
+#   mark             -> fill price (snapshots current value; log one each week you hold)
+# Add a row the easy way:  python log_trade.py schwab buy --shares 90 --price 711.44
+# The three rows below are EXAMPLES so you can see a curve — replace them with your real trades.
+account,date,type,shares,price,amount
+schwab,2026-06-15,deposit,,,100000
+schwab,2026-06-16,buy,90,690.00,
+schwab,2026-07-08,mark,,711.44,
+etrade,2026-06-15,deposit,,,50000.0
+etrade,2026-06-16,buy,65.0,692.0,
+etrade,2026-07-08,mark,,711.44,
