@@ -75,7 +75,13 @@
   footer{margin-top:30px;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line);padding-top:16px;}
   code{background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;}
 </style></head>
-<body><div class="wrap">
+<body>
+<div id="authgate" style="position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--paper);">
+  <div style="font-family:var(--serif);font-size:27px;color:var(--ink);">Growth Book Tracker</div>
+  <div style="color:var(--muted);font-family:var(--sans);font-size:14px;">Sign in to load your accounts.</div>
+  <button id="signin" style="font-family:var(--sans);font-size:15px;font-weight:600;padding:12px 22px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer;">Sign in with Google</button>
+</div>
+<div class="wrap">
   <h1>Growth Book Tracker</h1>
   <p class="sub" id="asof"></p>
 
@@ -94,17 +100,20 @@
 
   <div style="display:flex;gap:10px;margin:18px 0 0;">
     <button id="btnExport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬇ Export data</button>
-    <button id="btnImport" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">⬆ Import data</button>
-    <input type="file" id="fileImport" accept="application/json" style="display:none">
+    <button id="btnSignout" style="font-family:var(--mono);font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer;">Sign out</button>
   </div>
   <footer>
     <div>Market signal as of <span id="fdate"></span>. Refresh it weekly: <code>python generate_tracker.py --refresh</code>, then reload.</div>
-    <div>Log each fill (Buy/Sell), any Deposit/Withdraw, or click <b>Mark today</b> to snapshot value at the current price. The equity curve (solid) vs your net contributions (dashed) rebuilds instantly — the gap is your P&amp;L.</div>
+    <div>Your trades are saved to your Supabase account (durable, private, on every device) — click Add/Mark and they persist. Clearing cookies just signs you out; your data stays safe in the cloud.</div>
     <div style="margin-top:6px;opacity:.8;">Educational tool. Your data stays in this browser only. Not investment advice.</div>
   </footer>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SB_URL="https://linjkibhfgfdyztryiks.supabase.co";
+const SB_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpbmpraWJoZmdmZHl6dHJ5aWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxODIwMTMsImV4cCI6MjA5NTc1ODAxM30.N1S1ki8mq-78ZQDbVFunU21R98CvI760rv69ydI8yYE";
+const sb=window.supabase.createClient(SB_URL,SB_ANON);
 let D = {};
 const $ = id => document.getElementById(id);
 const money = n => (n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
@@ -127,10 +136,22 @@ function applySignal(){
 
 // ---- accounts ----
 const NAMES=['Schwab','E*Trade'];
-const lkey=i=>'gbtrk_ledger_'+i, nkey=i=>'gbtrk_name_'+i;
-function ledger(i){ try{return JSON.parse(localStorage.getItem(lkey(i)))||[];}catch(e){return [];} }
-function saveLedger(i,a){ localStorage.setItem(lkey(i),JSON.stringify(a)); }
+const nkey=i=>'gbtrk_name_'+i, ACC=['schwab','etrade'];
+let TX=[[],[]];
+function ledger(i){ return TX[i]||[]; }
 function acctName(i){ return localStorage.getItem(nkey(i))||NAMES[i]; }
+async function loadTx(){
+  const {data,error}=await sb.from('gb_transactions').select('*').order('date',{ascending:true});
+  if(error){ alert('Load failed: '+error.message); return; }
+  TX=[[],[]];
+  (data||[]).forEach(r=>{ const i=ACC.indexOf(r.account); if(i<0) return;
+    const e={id:r.id,date:r.date,type:r.type};
+    if(r.type==='buy'||r.type==='sell'){ e.qty=+r.shares; e.price=+r.price; }
+    else if(r.type==='deposit'||r.type==='withdraw'){ e.amount=+r.amount; }
+    else if(r.type==='mark'){ e.price=+r.price; }
+    TX[i].push(e);
+  });
+}
 
 // walk the ledger chronologically -> running state + equity series
 function compute(i){
@@ -175,7 +196,7 @@ function ledgerHTML(st,i){
     rev.map(({r,idx})=>{
       const qa = (r.type==='buy'||r.type==='sell')?r.qty+' sh':(r.type==='mark'?'—':money(r.amount));
       const px = (r.price!=null&&r.type!=='deposit'&&r.type!=='withdraw')?'$'+r.price.toFixed(2):'';
-      return `<tr><td>${r.date}</td><td><span class="tag ${r.type}">${r.type}</span></td><td>${qa}</td><td>${px}</td><td><span class="del" data-i="${i}" data-idx="${idx}">×</span></td></tr>`;
+      return `<tr><td>${r.date}</td><td><span class="tag ${r.type}">${r.type}</span></td><td>${qa}</td><td>${px}</td><td><span class="del" data-id="${r.id}">×</span></td></tr>`;
     }).join('')+`</tbody></table>`;
 }
 
@@ -277,16 +298,20 @@ function syncFields(i){
   $('f2_'+i).style.display = showPrice?'':'none';
 }
 
-function addEntry(i){
+async function addEntry(i){
   const ty=$('ty'+i).value, date=$('dt'+i).value||today();
   const v1=parseFloat($('f1_'+i).value), v2=parseFloat($('f2_'+i).value);
-  const e={date,type:ty};
-  if(ty==='buy'||ty==='sell'){ if(!(v1>0))return alert('Enter shares'); e.qty=v1; e.price=(v2>0?v2:D.qqq); }
-  else if(ty==='deposit'||ty==='withdraw'){ if(!(v1>0))return alert('Enter amount'); e.amount=v1; }
-  else if(ty==='mark'){ e.price=(v2>0?v2:D.qqq); }
-  const a=ledger(i); a.push(e); saveLedger(i,a); render();
+  const row={account:ACC[i],date,type:ty};
+  if(ty==='buy'||ty==='sell'){ if(!(v1>0))return alert('Enter shares'); row.shares=v1; row.price=(v2>0?v2:D.qqq); }
+  else if(ty==='deposit'||ty==='withdraw'){ if(!(v1>0))return alert('Enter amount'); row.amount=v1; }
+  else if(ty==='mark'){ row.price=(v2>0?v2:D.qqq); }
+  const {error}=await sb.from('gb_transactions').insert(row); if(error) return alert(error.message);
+  await loadTx(); render();
 }
-function markToday(i){ const a=ledger(i); a.push({date:today(),type:'mark',price:D.qqq}); saveLedger(i,a); render(); }
+async function markToday(i){
+  const {error}=await sb.from('gb_transactions').insert({account:ACC[i],date:today(),type:'mark',price:D.qqq});
+  if(error) return alert(error.message); await loadTx(); render();
+}
 
 function render(){
   $('accts').innerHTML=cardHTML(0)+cardHTML(1);
@@ -305,37 +330,33 @@ function render(){
     });
     cv.addEventListener('mouseleave',()=>drawCurve(i,null));
   });
-  document.querySelectorAll('.del').forEach(d=>d.addEventListener('click',e=>{
-    const i=+e.target.dataset.i, idx=+e.target.dataset.idx;
-    const rows=ledger(i).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
-    rows.splice(idx,1); saveLedger(i,rows); render();
+  document.querySelectorAll('.del').forEach(d=>d.addEventListener('click',async e=>{
+    const id=e.target.dataset.id; if(!id) return;
+    const {error}=await sb.from('gb_transactions').delete().eq('id',id); if(error) return alert(error.message);
+    await loadTx(); render();
   }));
 }
 window.addEventListener('resize',()=>{drawCurve(0);drawCurve(1);});
 
-// ---- export / import (move your data between devices) ----
+// ---- backup download (your data lives in Supabase; this is just a copy) ----
 function exportData(){
   const dump={_app:'growth-book-tracker'};
   [0,1].forEach(i=>{ dump['name_'+i]=acctName(i); dump['ledger_'+i]=ledger(i); });
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(dump,null,2)],{type:'application/json'}));
-  a.download='growth-book-data.json'; a.click();
+  a.download='growth-book-backup.json'; a.click();
 }
-function importData(file){
-  const rd=new FileReader();
-  rd.onload=()=>{ try{ const o=JSON.parse(rd.result);
-    [0,1].forEach(i=>{ if(o['name_'+i]!=null) localStorage.setItem(nkey(i),o['name_'+i]);
-      if(Array.isArray(o['ledger_'+i])) saveLedger(i,o['ledger_'+i]); });
-    render(); alert('Data imported.'); }catch(e){ alert('That file could not be read.'); } };
-  rd.readAsText(file);
-}
-
 function boot(){
   applySignal(); render();
-  const ex=$('btnExport'), im=$('btnImport'), fi=$('fileImport');
-  if(ex) ex.onclick=exportData;
-  if(im) im.onclick=()=>fi.click();
-  if(fi) fi.onchange=e=>{ if(e.target.files[0]) importData(e.target.files[0]); };
+  const ex=$('btnExport'); if(ex) ex.onclick=exportData;
+  const so=$('btnSignout'); if(so) so.onclick=()=>sb.auth.signOut().then(()=>location.reload());
 }
-fetch('signal.json?_='+Date.now()).then(r=>r.json()).then(d=>{D=d; boot();}).catch(e=>{document.body.innerHTML='<p style="font-family:system-ui;padding:40px;color:#555">Could not load signal.json yet. If you just deployed, wait for the first scheduled refresh (or run the Action manually).</p>';});
+async function start(){
+  try{ D=await fetch('signal.json?_='+Date.now()).then(r=>r.json()); }catch(e){}
+  await loadTx(); boot();
+}
+function showGate(s){ const g=$('authgate'); if(g) g.style.display=s?'flex':'none'; }
+sb.auth.getSession().then(({data})=>{ if(data.session){ showGate(false); start(); } else showGate(true); });
+sb.auth.onAuthStateChange((_e,session)=>{ if(session){ showGate(false); start(); } });
+const si=$('signin'); if(si) si.onclick=()=>sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split('#')[0].split('?')[0]}});
 </script></body></html>
